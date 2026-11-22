@@ -1,6 +1,6 @@
 # Token Vesting Vault
 
-![tests](https://github.com/<Aiidanaqq>/token-vesting-vault/actions/workflows/test.yml/badge.svg)
+![tests](https://github.com/Aiidanaqq/token-vesting-vault/actions/workflows/test.yml/badge.svg)
 
 A single ERC-20 vault that releases tokens to many beneficiaries (team, investors, advisors) on a **cliff + linear** schedule, with optional owner revocation. Built with Foundry and OpenZeppelin v5, and comes with a small web frontend.
 
