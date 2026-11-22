@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Token Vesting Vault</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --surface: #ffffff; --ink: #14171c; --ink-2: #4a5260; --muted: #7c8594;
+    --line: #e3e6eb; --grid: #eef0f3; --accent: #2f6fdb; --accent-soft: rgba(47,111,219,.14);
+    --good: #1f8a4c; --bad: #c0392b; --warn: #a86400; --radius: 12px;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1216; --surface: #171b21; --ink: #eef1f5; --ink-2: #b3bac6; --muted: #838c9a;
+      --line: #2a3039; --grid: #222831; --accent: #6a9cf0; --accent-soft: rgba(106,156,240,.18);
+      --good: #4cc483; --bad: #ef6f61; --warn: #e3a447;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 18px 28px; border-bottom: 1px solid var(--line); background: var(--surface);
+    position: sticky; top: 0; z-index: 5; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -.01em; }
+  header h1 span { color: var(--muted); font-weight: 400; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 80px; display: grid; gap: 20px; }
+  section { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 22px; }
+  section h2 { font-size: 15px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  label { display: grid; gap: 4px; font-size: 12px; color: var(--ink-2); }
+  input, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  input.addr { font-family: var(--mono); font-size: 13px; width: 420px; max-width: 100%; }
+  button { font: inherit; font-weight: 600; border: 1px solid transparent; border-radius: 8px; padding: 8px 14px;
+    background: var(--accent); color: #fff; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+  button.danger { background: transparent; color: var(--bad); border-color: var(--bad); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .muted { color: var(--muted); }
+  .mono { font-family: var(--mono); font-size: 13px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 16px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .tile .k { font-size: 12px; color: var(--muted); }
+  .tile .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; margin-top: 2px; word-break: break-all; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 820px) { .grid2 { grid-template-columns: 1fr; } header { padding: 14px 16px; } }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 14px; }
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
+  .badge.good { color: var(--good); border-color: var(--good); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; font-variant-numeric: tabular-nums; }
+  .stats div { font-size: 12px; color: var(--muted); } .stats b { display: block; font-size: 15px; color: var(--ink); }
+  @media (max-width: 600px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .bar { height: 8px; border-radius: 4px; background: var(--grid); overflow: hidden; position: relative; }
+  .bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 4px; }
+  .bar i.rel { background: var(--ink-2); opacity: .55; }
+  .chart { position: relative; margin-top: 8px; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; font-size: 12px; white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    transform: translate(-50%, -110%); display: none; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .legend { display: flex; gap: 16px; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 0; border-top: 2px solid var(--accent); vertical-align: middle; margin-right: 6px; }
+  .legend span.rel::before { border-top: 2px dashed var(--ink-2); }
+  .legend span.now::before { border-top: 2px dotted var(--muted); }
+  #toast { position: fixed; right: 20px; bottom: 20px; max-width: 420px; padding: 12px 16px; border-radius: 10px;
+    background: var(--ink); color: var(--bg); font-size: 14px; display: none; z-index: 10; word-break: break-word; }
+  #toast.err { background: var(--bad); color: #fff; }
+  .hidden { display: none !important; }
+  .hint { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; margin-top: 10px; }
+  td, th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
+  td.num, th.num { text-align: right; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Token Vesting Vault <span>· cliff + linear unlock</span></h1>
+  <div class="row" style="align-items:center">
+    <span id="netInfo" class="muted mono"></span>
+    <button id="connectBtn">Connect wallet</button>
+  </div>
+</header>
+
+<main>
+  <!-- VAULT -->
+  <section>
+    <h2>Vault</h2>
+    <div class="row">
+      <label>Vault address<input id="vaultAddr" class="addr" placeholder="0x…" spellcheck="false" /></label>
+      <button id="loadBtn" class="ghost">Load</button>
+    </div>
+    <div id="vaultTiles" class="tiles hidden">
+      <div class="tile"><div class="k">Token</div><div class="v" id="tToken">–</div></div>
+      <div class="tile"><div class="k">Vault balance</div><div class="v" id="tBalance">–</div></div>
+      <div class="tile"><div class="k">Promised (totalAllocated)</div><div class="v" id="tAllocated">–</div></div>
+      <div class="tile"><div class="k">Unallocated</div><div class="v" id="tFree">–</div></div>
+      <div class="tile"><div class="k">Schedules</div><div class="v" id="tCount">–</div></div>
+    </div>
+    <p id="ownerLine" class="hint hidden" style="margin-top:12px"></p>
+  </section>
+
+  <!-- MY SCHEDULES -->
+  <section id="mySection" class="hidden">
+    <h2>My schedules</h2>
+    <p class="hint">Anyone can call <code>release</code>; tokens always go to the beneficiary.</p>
+    <div id="myList"></div>
+  </section>
+
+  <!-- LOOKUP -->
+  <section id="lookupSection" class="hidden">
+    <h2>Look up a schedule</h2>
+    <div class="row">
+      <label>Schedule id<input id="lookupId" type="number" min="1" value="1" style="width:110px" /></label>
+      <button id="lookupBtn" class="ghost">Show</button>
+    </div>
+    <div id="lookupOut"></div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="adminSection" class="hidden">
+    <h2>Owner panel</h2>
+    <div class="grid2">
+      <div>
+        <h3 style="font-size:14px;margin:0 0 8px">1. Fund the vault</h3>
+        <p class="hint">Transfers tokens from your wallet into the vault. Schedules can only promise unallocated tokens.</p>
+        <div class="row">
+          <label>Amount<input id="fundAmt" type="number" min="0" step="any" placeholder="1000000" style="width:160px" /></label>
+          <button id="fundBtn">Send to vault</button>
+        </div>
+        <h3 style="font-size:14px;margin:20px 0 8px">Revoke</h3>
+        <div class="row">
+          <label>Schedule id<input id="revokeId" type="number" min="1" style="width:110px" /></label>
+          <button id="revokeBtn" class="danger">Revoke</button>
+        </div>
+        <h3 style="font-size:14px;margin:20px 0 8px">Withdraw unallocated</h3>
+        <div class="row">
+          <label>To<input id="withdrawTo" class="addr" style="width:300px" placeholder="0x… (default: you)" /></label>
+          <button id="withdrawBtn" class="ghost">Withdraw</button>
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:14px;margin:0 0 8px">2. Create a schedule</h3>
+        <div style="display:grid;gap:10px">
+          <label>Beneficiary<input id="cBenef" class="addr" placeholder="0x…" /></label>
+          <div class="row">
+            <label>Amount<input id="cAmount" type="number" min="0" step="any" placeholder="1000000" style="width:150px" /></label>
+            <label>Start<input id="cStart" type="datetime-local" /></label>
+          </div>
+          <div class="row">
+            <label>Cliff<input id="cCliff" type="number" min="0" value="12" style="width:80px" /></label>
+            <label>Duration (incl. cliff)<input id="cDur" type="number" min="1" value="48" style="width:80px" /></label>
+            <label>Unit<select id="cUnit">
+              <option value="60">minutes</option><option value="86400">days</option>
+              <option value="2592000" selected>months (30d)</option><option value="31536000">years (365d)</option>
+            </select></label>
+            <label style="display:flex;gap:6px;align-items:center;font-size:13px"><input id="cRevocable" type="checkbox" checked /> revocable</label>
+          </div>
+          <div class="chart" id="cPreview"></div>
+          <div><button id="createBtn">Create schedule</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SIMULATOR -->
+  <section>
+    <h2>Simulator <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· same formula as the contract, no wallet needed</span></h2>
+    <div class="row">
+      <label>Total<input id="sTotal" type="number" value="1000000" min="1" style="width:140px" /></label>
+      <label>Cliff (months)<input id="sCliff" type="number" value="12" min="0" style="width:100px" /></label>
+      <label>Duration (months)<input id="sDur" type="number" value="48" min="1" style="width:100px" /></label>
+      <label>Revoke at month (optional)<input id="sRevoke" type="number" min="0" placeholder="—" style="width:120px" /></label>
+    </div>
+    <div class="chart" id="simChart"></div>
+    <table id="simTable"></table>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script type="module">
+// ---------- vesting math (mirror of VestingVault._vested, BigInt) ----------
+// For charting history we clamp to revokedAt only for t after it; for t = now this equals the contract.
+function vestedAt(s, t) {
+  const tt = s.revoked && t > s.revokedAt ? s.revokedAt : t;
+  if (tt < s.start + s.cliff) return 0n;
+  if (tt >= s.start + s.duration) return s.total;
+  return (s.total * (tt - s.start)) / s.duration;
+}
+
+// ---------- helpers ----------
+const $ = (id) => document.getElementById(id);
+const short = (a) => a ? a.slice(0, 6) + "…" + a.slice(-4) : "";
+const fmtDate = (sec) => new Date(Number(sec) * 1000).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+const fmtDay = (sec) => new Date(Number(sec) * 1000).toLocaleDateString(undefined, { year: "2-digit", month: "short" });
+let decimals = 18, symbol = "";
+function fmtAmt(v, dec = decimals) {
+  const neg = v < 0n; if (neg) v = -v;
+  const base = 10n ** BigInt(dec);
+  const whole = v / base, frac = v % base;
+  let f = dec ? frac.toString().padStart(dec, "0").slice(0, 2).replace(/0+$/, "") : "";
+  return (neg ? "-" : "") + whole.toLocaleString("en-US") + (f ? "." + f : "");
+}
+function toast(msg, err = false) {
+  const el = $("toast"); el.textContent = msg; el.className = err ? "err" : ""; el.style.display = "block";
+  clearTimeout(toast._t); toast._t = setTimeout(() => (el.style.display = "none"), err ? 7000 : 4000);
+}
+
+// ---------- chart ----------
+function drawChart(el, s, opts = {}) {
+  const dec = opts.decimals ?? decimals;
+  const W = 640, H = 220, L = 64, R = 16, T = 14, B = 28;
+  const startN = Number(s.start), endN = Number(s.start + s.duration), cliffN = Number(s.start + s.cliff);
+  const span = endN - startN;
+  const x0 = startN - span * 0.06, x1 = endN + span * 0.08;
+  const totalN = Number(s.total);
+  const X = (t) => L + ((t - x0) / (x1 - x0)) * (W - L - R);
+  const Y = (v) => T + (1 - v / totalN) * (H - T - B);
+  const f = (t) => Number(vestedAt(s, BigInt(Math.floor(t))));
+
+  const bps = [x0, cliffN, endN, x1];
+  if (s.revoked) bps.push(Number(s.revokedAt));
+  const pts = [];
+  [...new Set(bps)].filter((b) => b >= x0 && b <= x1).sort((a, b) => a - b).forEach((b) => {
+    if (b === cliffN && s.cliff > 0n) pts.push([b, f(b - 1)]);
+    pts.push([b, f(b)]);
+  });
+  const line = pts.map(([t, v], i) => (i ? "L" : "M") + X(t).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
+  const area = line + ` L${X(x1).toFixed(1)} ${Y(0)} L${X(x0).toFixed(1)} ${Y(0)} Z`;
+
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((p) => {
+    const y = Y(totalN * p);
+    return `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--grid)"/>` +
+      `<text x="${L - 8}" y="${y + 4}" text-anchor="end">${p * 100}%</text>`;
+  }).join("");
+  const xt = [startN, cliffN, endN].filter((v, i, a) => a.indexOf(v) === i);
+  const xTicks = xt.map((t) => `<text x="${X(t)}" y="${H - 8}" text-anchor="middle">${opts.monthLabels ? "m" + Math.round((t - startN) / 2592000) : fmtDay(t)}</text>`).join("");
+
+  let extras = "";
+  if (s.cliff > 0n) extras += `<text x="${(X(startN) + X(cliffN)) / 2}" y="${Y(0) - 8}" text-anchor="middle">cliff</text>`;
+  if (opts.released !== undefined && opts.released > 0n) {
+    const y = Y(Number(opts.released));
+    extras += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--ink-2)" stroke-width="2" stroke-dasharray="5 4"/>` +
+      `<text x="${W - R}" y="${y - 6}" text-anchor="end" style="fill:var(--ink-2)">released</text>`;
+  }
+  if (s.revoked) {
+    const x = X(Number(s.revokedAt));
+    extras += `<line x1="${x}" x2="${x}" y1="${T}" y2="${Y(0)}" stroke="var(--bad)" stroke-width="1.5"/>` +
+      `<text x="${x + 4}" y="${T + 10}" style="fill:var(--bad)">revoked</text>`;
+  }
+  if (opts.now !== undefined) {
+    const n = Number(opts.now);
+    if (n >= x0 && n <= x1) {
+      const x = X(n);
+      extras += `<line x1="${x}" x2="${x}" y1="${T}" y2="${Y(0)}" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="2 3"/>` +
+        `<circle cx="${x}" cy="${Y(f(n))}" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>` +
+        `<text x="${x + 6}" y="${T + 22}">now</text>`;
+    }
+  }
+
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Vesting curve">
+      ${yTicks}
+      <line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line)"/>
+      <path d="${area}" fill="var(--accent-soft)"/>
+      <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+      ${extras}${xTicks}
+      <line class="hx" y1="${T}" y2="${Y(0)}" stroke="var(--ink-2)" stroke-width="1" visibility="hidden"/>
+      <circle class="hd" r="4.5" fill="var(--surface)" stroke="var(--accent)" stroke-width="2" visibility="hidden"/>
+      <rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/>
+    </svg><div class="tip"></div>
+    <div class="legend"><span>vested</span>${opts.released ? '<span class="rel">released</span>' : ""}${opts.now !== undefined ? '<span class="now">now</span>' : ""}</div>`;
+
+  const svg = el.querySelector("svg"), tip = el.querySelector(".tip"), hx = el.querySelector(".hx"), hd = el.querySelector(".hd");
+  svg.addEventListener("mousemove", (e) => {
+    const r = svg.getBoundingClientRect();
+    const px = ((e.clientX - r.left) / r.width) * W;
+    if (px < L || px > W - R) return hide();
+    const t = x0 + ((px - L) / (W - L - R)) * (x1 - x0);
+    const v = vestedAt(s, BigInt(Math.floor(t)));
+    hx.setAttribute("x1", px); hx.setAttribute("x2", px); hx.setAttribute("visibility", "visible");
+    hd.setAttribute("cx", px); hd.setAttribute("cy", Y(Number(v))); hd.setAttribute("visibility", "visible");
+    const pct = s.total ? Number((v * 10000n) / s.total) / 100 : 0;
+    const when = opts.monthLabels ? "month " + ((t - startN) / 2592000).toFixed(1) : fmtDate(Math.floor(t));
+    tip.innerHTML = `${when}<br><b>${fmtAmt(v, dec)}</b> ${opts.symbol ?? symbol} · ${pct}%`;
+    tip.style.left = (px / W) * r.width + "px"; tip.style.top = (Y(Number(v)) / H) * r.height + "px"; tip.style.display = "block";
+  });
+  const hide = () => { tip.style.display = "none"; hx.setAttribute("visibility", "hidden"); hd.setAttribute("visibility", "hidden"); };
+  svg.addEventListener("mouseleave", hide);
+}
+
+// ---------- simulator ----------
+const MONTH = 2592000n;
+function runSim() {
+  const total = BigInt(Math.max(1, Math.floor(+$("sTotal").value || 0)));
+  const dur = BigInt(Math.max(1, Math.floor(+$("sDur").value || 1)));
+  let cliff = BigInt(Math.max(0, Math.floor(+$("sCliff").value || 0)));
+  if (cliff > dur) cliff = dur;
+  const rv = $("sRevoke").value;
+  const s = { total, start: 0n, cliff: cliff * MONTH, duration: dur * MONTH, revoked: rv !== "", revokedAt: rv !== "" ? BigInt(Math.floor(+rv)) * MONTH : 0n };
+  drawChart($("simChart"), s, { decimals: 0, symbol: "tokens", monthLabels: true });
+  const marks = [...new Set([0n, cliff ? cliff - 1n : 0n, cliff, (cliff + dur) / 2n, dur - 1n, dur, dur + 12n])].filter((m) => m >= 0n).sort((a, b) => (a < b ? -1 : 1));
+  $("simTable").innerHTML = `<tr><th>Month</th><th class="num">Vested</th><th class="num">%</th><th>Note</th></tr>` + marks.map((m) => {
+    const v = vestedAt(s, m * MONTH);
+    const note = m < cliff ? "cliff" : m === cliff && cliff > 0n ? "cliff ends: accrued part unlocks at once" : m >= dur ? "fully vested" : "linear";
+    return `<tr><td>${m}</td><td class="num">${fmtAmt(v, 0)}</td><td class="num">${(Number((v * 10000n) / total) / 100).toFixed(2)}</td><td class="muted">${s.revoked && m * MONTH >= s.revokedAt ? "frozen by revoke" : note}</td></tr>`;
+  }).join("");
+}
+["sTotal", "sCliff", "sDur", "sRevoke"].forEach((id) => $(id).addEventListener("input", runSim));
+runSim();
+
+// ---------- chain ----------
+const VAULT_ABI = [
+  "function token() view returns (address)",
+  "function owner() view returns (address)",
+  "function scheduleCount() view returns (uint256)",
+  "function totalAllocated() view returns (uint256)",
+  "function unallocated() view returns (uint256)",
+  "function schedules(uint256) view returns (address beneficiary, uint256 total, uint256 released, uint64 start, uint64 cliff, uint64 duration, uint64 revokedAt, bool revocable, bool revoked)",
+  "function schedulesOf(address) view returns (uint256[])",
+  "function releasable(uint256) view returns (uint256)",
+  "function createSchedule(address,uint256,uint64,uint64,uint64,bool) returns (uint256)",
+  "function release(uint256)",
+  "function revoke(uint256)",
+  "function withdrawUnallocated(address) returns (uint256)",
+  "function transferSchedule(uint256,address)",
+  "error ZeroAddress()", "error ZeroAmount()", "error ZeroDuration()", "error CliffExceedsDuration()",
+  "error InsufficientUnallocated(uint256 available, uint256 requested)", "error UnknownSchedule(uint256 id)",
+  "error NothingToRelease()", "error NotRevocable()", "error AlreadyRevoked()", "error NothingToWithdraw()",
+  "error NotBeneficiary()", "error OwnableUnauthorizedAccount(address account)",
+];
+const ERC20_ABI = [
+  "function symbol() view returns (string)", "function decimals() view returns (uint8)",
+  "function balanceOf(address) view returns (uint256)", "function transfer(address,uint256) returns (bool)",
+];
+
+let ethers, provider, signer, account, vault, token, vaultOwner;
+async function loadEthers() {
+  if (ethers) return ethers;
+  ethers = await import("https://esm.sh/ethers@6.13.4");
+  return ethers;
+}
+
+function errMsg(e) {
+  const name = e?.revert?.name;
+  if (name) return name + (e.revert.args?.length ? "(" + e.revert.args.join(", ") + ")" : "");
+  return e?.shortMessage || e?.reason || e?.message || String(e);
+}
+
+async function send(label, fn) {
+  try {
+    toast(label + ": confirm in wallet…");
+    const tx = await fn();
+    toast(label + ": waiting for " + short(tx.hash));
+    await tx.wait();
+    toast(label + " ✓");
+    await refresh();
+  } catch (e) { toast(label + " failed: " + errMsg(e), true); }
+}
+
+$("connectBtn").addEventListener("click", async () => {
+  if (!window.ethereum) return toast("No wallet found. Install MetaMask (or Rabby).", true);
+  try {
+    await loadEthers();
+    provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = await provider.getSigner();
+    account = await signer.getAddress();
+    const net = await provider.getNetwork();
+    $("netInfo").textContent = `chain ${net.chainId} · ${short(account)}`;
+    $("connectBtn").textContent = "Connected";
+    window.ethereum.on?.("accountsChanged", () => location.reload());
+    window.ethereum.on?.("chainChanged", () => location.reload());
+    if ($("vaultAddr").value) await loadVault();
+  } catch (e) { toast(errMsg(e), true); }
+});
+
+async function loadVault() {
+  if (!signer) return toast("Connect a wallet first.", true);
+  const addr = $("vaultAddr").value.trim();
+  if (!ethers.isAddress(addr)) return toast("Not a valid address.", true);
+  if ((await provider.getCode(addr)) === "0x") return toast("No contract at this address on the current network.", true);
+  localStorage.setItem("vault", addr);
+  vault = new ethers.Contract(addr, VAULT_ABI, signer);
+  token = new ethers.Contract(await vault.token(), ERC20_ABI, signer);
+  [symbol, decimals, vaultOwner] = await Promise.all([token.symbol(), token.decimals().then(Number), vault.owner()]);
+  await refresh();
+}
+$("loadBtn").addEventListener("click", () => loadVault().catch((e) => toast(errMsg(e), true)));
+
+async function chainNow() { return BigInt((await provider.getBlock("latest")).timestamp); }
+
+async function refresh() {
+  if (!vault) return;
+  const [bal, alloc, free, count, now] = await Promise.all([
+    token.balanceOf(vault.target), vault.totalAllocated(), vault.unallocated(), vault.scheduleCount(), chainNow(),
+  ]);
+  $("vaultTiles").classList.remove("hidden");
+  $("tToken").textContent = symbol;
+  $("tBalance").textContent = fmtAmt(bal);
+  $("tAllocated").textContent = fmtAmt(alloc);
+  $("tFree").textContent = fmtAmt(free);
+  $("tCount").textContent = count.toString();
+  const isOwner = vaultOwner.toLowerCase() === account.toLowerCase();
+  $("ownerLine").classList.remove("hidden");
+  $("ownerLine").innerHTML = `Owner: <span class="mono">${vaultOwner}</span>${isOwner ? " <span class='badge good'>you</span>" : ""}`;
+  $("adminSection").classList.toggle("hidden", !isOwner);
+  $("lookupSection").classList.remove("hidden");
+  $("mySection").classList.remove("hidden");
+
+  const ids = await vault.schedulesOf(account);
+  const list = $("myList");
+  list.innerHTML = ids.length ? "" : `<p class="muted">No schedules for ${short(account)}.</p>`;
+  for (const id of ids) list.appendChild(await scheduleCard(id, now));
+  updatePreview();
+}
+
+async function scheduleCard(id, now) {
+  const r = await vault.schedules(id);
+  const s = { beneficiary: r.beneficiary, total: r.total, released: r.released, start: r.start, cliff: r.cliff,
+    duration: r.duration, revokedAt: r.revokedAt, revocable: r.revocable, revoked: r.revoked };
+  const vested = vestedAt(s, now), rel = vested - s.released;
+  const pct = (a) => (s.total ? Number((a * 10000n) / s.total) / 100 : 0);
+  const mine = account && s.beneficiary.toLowerCase() === account.toLowerCase();
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <div class="card-head">
+      <div><b>Schedule #${id}</b> <span class="muted mono">→ ${short(s.beneficiary)}</span>
+        ${s.revoked ? `<span class="badge bad">revoked ${fmtDate(s.revokedAt)}</span>` : s.revocable ? `<span class="badge">revocable</span>` : `<span class="badge good">irrevocable</span>`}</div>
+      <div class="row" style="align-items:center">
+        <button class="rel" ${rel > 0n ? "" : "disabled"}>Release ${fmtAmt(rel)} ${symbol}</button>
+      </div>
+    </div>
+    <div class="stats">
+      <div>Total<b>${fmtAmt(s.total)}</b></div>
+      <div>Vested<b>${fmtAmt(vested)} · ${pct(vested)}%</b></div>
+      <div>Released<b>${fmtAmt(s.released)}</b></div>
+      <div>Releasable now<b>${fmtAmt(rel)}</b></div>
+    </div>
+    <div class="bar" aria-hidden="true"><i style="width:${pct(vested)}%"></i><i class="rel" style="width:${pct(s.released)}%"></i></div>
+    <div class="chart"></div>
+    <p class="hint" style="margin:6px 0 0">Start ${fmtDate(s.start)} · cliff ends ${fmtDate(s.start + s.cliff)} · fully vested ${fmtDate(s.start + s.duration)}</p>
+    ${mine ? `<div class="row" style="margin-top:12px"><label>Transfer to new wallet<input class="addr to" style="width:300px" placeholder="0x…"/></label><button class="ghost tr">Transfer</button></div>` : ""}`;
+  drawChart(card.querySelector(".chart"), s, { released: s.released, now });
+  card.querySelector("button.rel").addEventListener("click", () => send(`Release #${id}`, () => vault.release(id)));
+  card.querySelector("button.tr")?.addEventListener("click", () => {
+    const to = card.querySelector("input.to").value.trim();
+    if (!ethers.isAddress(to)) return toast("Not a valid address.", true);
+    send(`Transfer #${id}`, () => vault.transferSchedule(id, to));
+  });
+  return card;
+}
+
+$("lookupBtn").addEventListener("click", async () => {
+  try {
+    const id = BigInt($("lookupId").value || "0");
+    const count = await vault.scheduleCount();
+    if (id < 1n || id > count) return toast(`Unknown schedule (ids 1…${count}).`, true);
+    $("lookupOut").innerHTML = "";
+    $("lookupOut").appendChild(await scheduleCard(id, await chainNow()));
+  } catch (e) { toast(errMsg(e), true); }
+});
+
+// ---------- owner actions ----------
+const parseAmt = (v) => ethers.parseUnits(String(v || "0"), decimals);
+$("fundBtn").addEventListener("click", () => {
+  const a = parseAmt($("fundAmt").value);
+  if (a <= 0n) return toast("Enter an amount.", true);
+  send("Fund vault", () => token.transfer(vault.target, a));
+});
+function createParams() {
+  const unit = BigInt($("cUnit").value);
+  const cliff = BigInt(Math.max(0, Math.floor(+$("cCliff").value || 0))) * unit;
+  const duration = BigInt(Math.max(0, Math.floor(+$("cDur").value || 0))) * unit;
+  const startStr = $("cStart").value;
+  const start = BigInt(Math.floor((startStr ? new Date(startStr).getTime() : Date.now()) / 1000));
+  return { cliff, duration, start };
+}
+function updatePreview() {
+  if (!ethers) return;
+  const { cliff, duration, start } = createParams();
+  let total; try { total = parseAmt($("cAmount").value || "1"); } catch { total = 1n; }
+  if (duration === 0n || cliff > duration || total === 0n) { $("cPreview").innerHTML = `<p class="hint">Duration must be > 0 and ≥ cliff.</p>`; return; }
+  drawChart($("cPreview"), { total, start, cliff, duration, revoked: false, revokedAt: 0n }, { now: BigInt(Math.floor(Date.now() / 1000)) });
+}
+["cAmount", "cStart", "cCliff", "cDur", "cUnit"].forEach((id) => $(id).addEventListener("input", updatePreview));
+$("createBtn").addEventListener("click", () => {
+  const b = $("cBenef").value.trim();
+  if (!ethers.isAddress(b)) return toast("Beneficiary is not a valid address.", true);
+  const { cliff, duration, start } = createParams();
+  if (duration === 0n) return toast("Duration must be > 0.", true);
+  if (cliff > duration) return toast("Cliff can't exceed duration.", true);
+  const amount = parseAmt($("cAmount").value);
+  if (amount <= 0n) return toast("Enter an amount.", true);
+  send("Create schedule", () => vault.createSchedule(b, amount, start, cliff, duration, $("cRevocable").checked));
+});
+$("revokeBtn").addEventListener("click", () => {
+  const id = $("revokeId").value;
+  if (!id) return toast("Enter a schedule id.", true);
+  if (!confirmRevoke.armed) { confirmRevoke.armed = true; $("revokeBtn").textContent = "Click again to confirm"; setTimeout(() => { confirmRevoke.armed = false; $("revokeBtn").textContent = "Revoke"; }, 4000); return; }
+  confirmRevoke.armed = false; $("revokeBtn").textContent = "Revoke";
+  send(`Revoke #${id}`, () => vault.revoke(BigInt(id)));
+});
+const confirmRevoke = { armed: false };
+$("withdrawBtn").addEventListener("click", () => {
+  const to = $("withdrawTo").value.trim() || account;
+  if (!ethers.isAddress(to)) return toast("Not a valid address.", true);
+  send("Withdraw unallocated", () => vault.withdrawUnallocated(to));
+});
+
+// ---------- init ----------
+const d = new Date(); d.setSeconds(0, 0);
+$("cStart").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+$("vaultAddr").value = new URLSearchParams(location.search).get("vault") || localStorage.getItem("vault") || "";
+</script>
+</body>
+</html>
